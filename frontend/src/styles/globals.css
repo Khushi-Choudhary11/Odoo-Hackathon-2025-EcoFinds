@@ -1,0 +1,33 @@
+/* Global styles for EcoFinds */
+
+/* Fix input field colors for better visibility */
+input, textarea, select {
+  color: #1a202c !important; /* Dark gray text color */
+  background-color: white !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #a0aec0 !important; /* Lighter gray for placeholders */
+}
+
+/* Override any other styles that might be affecting input visibility */
+.appearance-none {
+  color: #1a202c !important;
+  background-color: white !important;
+}
+
+/* Make sure form elements are visible in dark mode too */
+.dark input, 
+.dark textarea, 
+.dark select {
+  color: #e2e8f0 !important; /* Light gray text for dark mode */
+  background-color: #2d3748 !important; /* Dark background */
+}
+
+/* Focus styles */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #48bb78 !important; /* Green border on focus */
+  box-shadow: 0 0 0 3px rgba(72, 187, 120, 0.2) !important; /* Green glow */
+}
