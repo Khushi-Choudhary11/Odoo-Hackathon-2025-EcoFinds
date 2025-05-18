@@ -11,9 +11,9 @@ class CartItem(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
     
-    # Relationships
-    user = db.relationship('User', back_populates='cart_items')
-    product = db.relationship('Product', back_populates='cart_items')
+    # Relationships - using strings instead of back_populates
+    user = db.relationship('User')
+    product = db.relationship('Product')
     
     def to_dict(self):
         product_data = None

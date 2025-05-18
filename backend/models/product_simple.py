@@ -1,7 +1,5 @@
 from extensions import db
 from datetime import datetime
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.ext.associationproxy import association_proxy
 
 class Product(db.Model):
     __tablename__ = 'products'
@@ -20,10 +18,19 @@ class Product(db.Model):
     # Foreign keys
     seller_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     
-    # Relationships
-    seller = db.relationship('User', back_populates='products')
-    order_items = db.relationship('OrderItem', back_populates='product')
-    cart_items = db.relationship('CartItem', back_populates='product')
+    # Relationships - using strings instead of back_populates to avoid circular references
+    seller = db.relationship('User')
+    
+    # Define a property for accessing cart_items and order_items without explicit relationships
+    @property
+    def cart_items(self):
+        from models.cart_item import CartItem
+        return CartItem.query.filter_by(product_id=self.id).all()
+    
+    @property
+    def order_items(self):
+        from models.order_item import OrderItem
+        return OrderItem.query.filter_by(product_id=self.id).all()
     
     def to_dict(self):
         return {

@@ -1,9 +1,11 @@
 from extensions import db
+from datetime import datetime
 
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
     
     id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     price = db.Column(db.Float, nullable=False)  # Store price at time of purchase
     
     # Foreign keys
@@ -15,18 +17,24 @@ class OrderItem(db.Model):
     product = db.relationship('Product', back_populates='order_items')
     
     def to_dict(self):
+        product_data = None
+        try:
+            if self.product:
+                product_data = self.product.to_dict()
+        except Exception as e:
+            product_data = {
+                "id": self.product_id,
+                "error": "Failed to load product data",
+                "details": str(e)
+            }
+            
         return {
             'id': self.id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
             'price': self.price,
-            'product': {
-                'id': self.product.id,
-                'title': self.product.title,
-                'image_url': self.product.image_url,
-                'seller': {
-                    'id': self.product.seller.id,
-                    'username': self.product.seller.username
-                }
-            }
+            'order_id': self.order_id,
+            'product_id': self.product_id,
+            'product': product_data
         }
     
     def __repr__(self):

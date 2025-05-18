@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from models.product import Product
 from models.user import User
@@ -8,32 +8,39 @@ products_bp = Blueprint('products', __name__)
 
 @products_bp.route('', methods=['GET'])
 def get_products():
-    # Query parameters
-    category = request.args.get('category')
-    condition = request.args.get('condition')
-    search = request.args.get('search')
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 12, type=int)
-    
-    # Base query
-    query = Product.query.filter_by(is_sold=False)
-    
-    # Apply filters
-    if category:
-        query = query.filter_by(category=category)
-    if condition:
-        query = query.filter_by(condition=condition)
-    if search:
-        query = query.filter(Product.title.ilike(f'%{search}%') | 
-                             Product.description.ilike(f'%{search}%'))
-    
-    # Apply pagination
-    products = query.order_by(Product.created_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False)
-    
-    # Return products as a list, not inside an object
-    # This makes it compatible with frontend that expects an array directly
-    return jsonify([product.to_dict() for product in products.items]), 200
+    try:
+        # Query parameters
+        category = request.args.get('category')
+        condition = request.args.get('condition')
+        search = request.args.get('search')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 12, type=int)
+        
+        # Base query
+        query = Product.query.filter_by(is_sold=False)
+        
+        # Apply filters
+        if category and category != 'all':
+            query = query.filter_by(category=category)
+        if condition:
+            query = query.filter_by(condition=condition)
+        if search:
+            query = query.filter(Product.title.ilike(f'%{search}%') | 
+                                Product.description.ilike(f'%{search}%'))
+        
+        # Apply pagination
+        products = query.order_by(Product.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False)
+        
+        # Return products as a list, not inside an object
+        # This makes it compatible with frontend that expects an array directly
+        return jsonify([product.to_dict() for product in products.items]), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching products: {str(e)}")
+        return jsonify({
+            "message": "Error retrieving products",
+            "details": str(e)
+        }), 500
 
 @products_bp.route('/<int:id>', methods=['GET'])
 def get_product(id):
@@ -42,14 +49,7 @@ def get_product(id):
     if not product:
         return jsonify({"message": "Product not found"}), 404
     
-    product_data = product.to_dict()
-    # Ensure seller data is properly formatted
-    if product.seller:
-        product_data['seller'] = {
-            'id': product.seller.id,
-            'username': product.seller.username
-        }
-    return jsonify(product_data), 200
+    return jsonify(product.to_dict()), 200
 
 @products_bp.route('', methods=['POST'])
 @jwt_required()

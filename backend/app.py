@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
@@ -7,31 +7,33 @@ from flask_cors import CORS
 from extensions import db, migrate, jwt, cors
 
 def create_app():
-    app = Flask(__name__, static_folder='../frontend', template_folder='../frontend')
+    app = Flask(__name__)
 
     # Configure app
     app.config.from_mapping(
         SQLALCHEMY_DATABASE_URI='sqlite:///ecofinds.db',
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         JWT_SECRET_KEY='humansaresocialanimals',
-        JWT_VERIFY_SUB= False
+        JWT_TOKEN_LOCATION=['headers'],
+        JWT_HEADER_NAME='Authorization',
+        JWT_HEADER_TYPE='Bearer',
+        JWT_ERROR_MESSAGE_KEY='msg'
     )
     
-    # Add JWT error handlers for better debugging
-    @jwt.invalid_token_loader
-    def invalid_token_callback(error):
-        return jsonify({"msg": f"Invalid token: {error}"}), 422
-
-    @jwt.unauthorized_loader
-    def missing_token_callback(error):
-        return jsonify({"msg": f"Authorization required: {error}"}), 401
-
-
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    cors.init_app(app, resources={r"/*": {"origins": ["http://localhost:3000"], "supports_credentials": True}})
+    
+    # Configure CORS with better support for preflight requests
+    cors.init_app(app, 
+                 resources={r"/api/*": {
+                     "origins": ["http://localhost:3000"],
+                     "supports_credentials": True,
+                     "allow_headers": ["Content-Type", "Authorization"],
+                     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                     "expose_headers": ["Content-Type", "Authorization"]
+                 }})
     
     # Import models
     from models.user import User
@@ -42,30 +44,61 @@ def create_app():
     from models.order_item import OrderItem
 
     # Import and register blueprints
-    from routes.auth import auth_bp
-    from routes.users import users_bp
+    # Try to use improved authentication first
+    try:
+        from routes.auth_fix import auth_bp
+        print("Using fixed authentication routes")
+    except ImportError:
+        from routes.auth import auth_bp
+        print("Using original authentication routes")
+        
+    # Try to use improved users routes first
+    try:
+        from routes.users_fix import users_bp
+        print("Using fixed users routes")
+    except ImportError:
+        from routes.users import users_bp
+        print("Using original users routes")
     from routes.products import products_bp
-    from routes.cart import cart_bp
-    from routes.orders import orders_bp
+    
+    # Try to import the fixed cart routes first
+    try:
+        from routes.cart_fix import cart_bp
+        print("Using fixed cart routes")
+    except ImportError:
+        from routes.cart import cart_bp
+        print("Using original cart routes")
+    
+    # Try to import the fixed orders routes first    
+    try:
+        from routes.orders_fix import orders_bp
+        print("Using fixed orders routes")
+    except ImportError:
+        from routes.orders import orders_bp
+        print("Using original orders routes")
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(users_bp, url_prefix='/api/user')
+    app.register_blueprint(users_bp, url_prefix='/api/users')
     app.register_blueprint(products_bp, url_prefix='/api/products')
     app.register_blueprint(cart_bp, url_prefix='/api/cart')
     app.register_blueprint(orders_bp, url_prefix='/api/orders')
-
-    # Setup static routes for SPA
-    @app.route('/')
-    def index():
-        return app.send_static_file('index.html')
     
-    # Catch-all route to support SPA routing
-    @app.route('/<path:path>')
-    def catch_all(path):
-        try:
-            return app.send_static_file(path)
-        except:
-            return app.send_static_file('index.html')
+    # Add error handlers for common API errors
+    @app.errorhandler(422)
+    def handle_unprocessable_entity(error):
+        return {
+            "error": "Unprocessable Entity",
+            "message": "The request was well-formed but was unable to be followed due to semantic errors.",
+            "details": str(error)
+        }, 422
+        
+    @app.errorhandler(400)
+    def handle_bad_request(error):
+        return {
+            "error": "Bad Request",
+            "message": "The server could not understand the request due to invalid syntax.",
+            "details": str(error)
+        }, 400
 
     return app
 
@@ -92,7 +125,13 @@ def seed_roles_and_admin():
 if __name__ == '__main__':
     app = create_app()
     with app.app_context():
-        db.create_all()
-        print("Tables created")
-        seed_roles_and_admin()
+        try:
+            db.create_all()
+            print("Tables created")
+            seed_roles_and_admin()
+            print("Database initialization completed successfully")
+        except Exception as e:
+            print(f"Error during database initialization: {str(e)}")
+            import traceback
+            traceback.print_exc()
     app.run(debug=True)

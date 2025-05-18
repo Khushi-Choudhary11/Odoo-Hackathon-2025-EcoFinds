@@ -14,9 +14,14 @@ class Order(db.Model):
     # Foreign keys
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     
-    # Relationships
-    user = db.relationship('User', back_populates='orders')
-    order_items = db.relationship('OrderItem', back_populates='order', cascade='all, delete-orphan')
+    # Relationships - using strings instead of back_populates
+    user = db.relationship('User')
+    
+    # Define a property for accessing order items without an explicit relationship
+    @property
+    def order_items(self):
+        from models.order_item_simple import OrderItem
+        return OrderItem.query.filter_by(order_id=self.id).all()
     
     def to_dict(self):
         return {

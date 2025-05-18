@@ -1,215 +1,248 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FiPackage, FiAlertCircle } from 'react-icons/fi';
-import { RiRecycleFill, RiWaterFlashLine, RiPlantLine } from 'react-icons/ri';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { FiShoppingBag, FiPackage, FiCalendar, FiArrowLeft, FiAlertCircle, FiCheckCircle, FiInfo } from 'react-icons/fi';
 import Sidebar from '../components/Sidebar';
+import { getAuthHeader, isAuthenticated, removeToken } from '../utils/auth';
 
 const PurchaseHistoryPage = () => {
   const navigate = useNavigate();
-  const [purchases, setPurchases] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const location = useLocation();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
+  const [successMessage, setSuccessMessage] = useState(location.state?.message || null);
+  const [highlightedOrderId, setHighlightedOrderId] = useState(location.state?.orderId || null);
+  
+  // Check authentication and fetch orders
   useEffect(() => {
-    const fetchPurchases = async () => {
-      setIsLoading(true);
+    // Clear location state after reading it
+    if (location.state?.message) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+        window.history.replaceState({}, document.title);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state?.message]);
+  
+  useEffect(() => {
+    // Check authentication
+    if (!isAuthenticated()) {
+      navigate('/login', { state: { from: '/purchases', message: 'Please log in to view your purchases' } });
+      return;
+    }
+    
+    const fetchOrders = async () => {
+      setLoading(true);
       try {
-        const token = localStorage.getItem('token');
-
-        if (!token) {
-          navigate('/login', { state: { redirectTo: '/purchases' } });
+        console.log("Fetching order history...");
+        const response = await fetch('http://localhost:5000/api/orders', {
+          headers: getAuthHeader()
+        });
+        
+        console.log("Orders fetch response status:", response.status);
+        
+        // Handle authentication errors
+        if (response.status === 401 || response.status === 422) {
+          console.error("Authentication error. Redirecting to login");
+          removeToken();
+          navigate('/login', { state: { from: '/purchases', message: 'Your session has expired. Please log in again.' } });
           return;
         }
-
-        // Validate token format before sending
-        if (typeof token !== 'string' || token.trim() === '') {
-          throw new Error('Invalid authentication token');
-        }
-
-        const response = await fetch('http://localhost:5000/api/user/purchases', {
-          headers: {
-            'Authorization': `Bearer ${token.trim()}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-
-        // Enhanced error handling
+        
         if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          const errorMessage = errorData?.msg || 'Failed to fetch purchase history';
-          throw new Error(errorMessage);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Failed to fetch your orders');
         }
-
+        
         const data = await response.json();
-        setPurchases(data);
+        console.log("Orders data:", data);
+        
+        if (!data.orders || !Array.isArray(data.orders)) {
+          console.warn("No orders data returned or invalid format");
+          setOrders([]);
+          return;
+        }
+        
+        // Sort orders by date (newest first)
+        const sortedOrders = data.orders.sort((a, b) => {
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        
+        console.log(`Processed ${sortedOrders.length} orders`);
+        
+        // Process each order to ensure items array exists
+        const processedOrders = sortedOrders.map(order => {
+          return {
+            ...order,
+            items: Array.isArray(order.items) ? order.items : []
+          };
+        });
+          
+        setOrders(processedOrders);
+        
       } catch (err) {
-        console.error('Error fetching purchases:', err);
-        setError(err.message);
-        // Use sample data for demo
-        setPurchases([
-          {
-            id: 1,
-            title: 'Reclaimed Wood Chair',
-            price: 30,
-            image: 'https://images.unsplash.com/photo-1519947486511-46149fa0a254?q=80&w=300',
-            date: '2023-05-15',
-            impact: 'Saved 5kg of wood from landfill'
-          },
-          {
-            id: 2,
-            title: 'Upcycled Bookshelf',
-            price: 25,
-            image: 'https://images.unsplash.com/photo-1594620302200-9a762244a156?q=80&w=300',
-            date: '2023-04-22',
-            impact: 'Reduced furniture waste'
-          },
-          {
-            id: 3,
-            title: 'Organic Cotton T-shirt (Set of 2)',
-            price: 18,
-            image: 'https://images.unsplash.com/photo-1523381294911-8d3cead13475?q=80&w=300',
-            date: '2023-03-10',
-            impact: 'Grown without harmful pesticides'
-          }
-        ]);
+        console.error('Error fetching orders:', err);
+        setError(err.message || 'Failed to load your purchase history');
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
-
-    fetchPurchases();
+    
+    fetchOrders();
   }, [navigate]);
 
-  // Calculate environmental impact
-  const calculateImpact = () => {
-    return {
-      itemsReused: purchases.length,
-      wasteAvoided: `${purchases.length * 4}kg`,
-      waterSaved: `${purchases.length * 1200}L`
-    };
+  // Format date for display
+  const formatDate = (dateString) => {
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
-  const impact = calculateImpact();
-
-  const formatPrice = (price) => {
-    return `$${price}`;
-  };
-
-  const handleBuyAgain = async (productId) => {
-    try {
-      const token = localStorage.getItem('token');
-
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:5000/api/cart', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          productId,
-          quantity: 1
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add item to cart');
-      }
-
-      navigate('/cart');
-    } catch (err) {
-      console.error('Error adding to cart:', err);
-      setError(err.message);
-    }
-  };
+  // Render loading state
+  if (loading) {
+    return (
+      <div className="flex">
+        <Sidebar />
+        <div className="ml-64 p-8 w-full flex justify-center items-center h-screen">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-600 mb-4"></div>
+            <p className="text-gray-600">Loading your purchase history...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex">
       <Sidebar />
       <div className="ml-64 p-8 w-full">
-        <h2 className="text-2xl font-bold text-green-700 mb-6">Your Sustainable Purchases</h2>
-
-        {error && (
-          <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4">
+        <Link to="/" className="inline-flex items-center text-green-600 hover:text-green-800 mb-6">
+          <FiArrowLeft className="mr-2" /> Back to Shopping
+        </Link>
+        
+        <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+          <FiShoppingBag className="mr-3" /> Purchase History
+        </h1>
+        
+        {successMessage && (
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
             <div className="flex">
-              <FiAlertCircle className="text-red-500 mr-2" />
-              <p className="text-red-700">{error}</p>
+              <div className="flex-shrink-0">
+                <FiCheckCircle className="h-5 w-5 text-green-500" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-green-700">{successMessage}</p>
+              </div>
             </div>
           </div>
         )}
-
-        <div className="bg-green-50 p-6 rounded-xl mb-8 border border-green-200">
-          <h3 className="text-xl font-bold text-green-800 mb-3 flex items-center">
-            <RiRecycleFill className="mr-2" /> Your Environmental Impact
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-lg text-center">
-              <RiRecycleFill className="w-8 h-8 mx-auto text-green-600 mb-1" />
-              <span className="text-2xl font-bold text-green-700">{impact.itemsReused}</span>
-              <p className="text-sm text-gray-600">Items Reused</p>
-            </div>
-            <div className="bg-white p-4 rounded-lg text-center">
-              <RiPlantLine className="w-8 h-8 mx-auto text-green-600 mb-1" />
-              <span className="text-2xl font-bold text-green-700">{impact.wasteAvoided}</span>
-              <p className="text-sm text-gray-600">Waste Avoided</p>
-            </div>
-            <div className="bg-white p-4 rounded-lg text-center">
-              <RiWaterFlashLine className="w-8 h-8 mx-auto text-green-600 mb-1" />
-              <span className="text-2xl font-bold text-green-700">{impact.waterSaved}</span>
-              <p className="text-sm text-gray-600">Water Saved</p>
+        
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <FiAlertCircle className="h-5 w-5 text-red-500" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
             </div>
           </div>
-        </div>
-
-        {isLoading ? (
-          <div className="flex justify-center items-center h-48">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-green-600"></div>
-          </div>
-        ) : purchases.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
-            <FiPackage className="mx-auto h-16 w-16 text-gray-300" />
-            <h3 className="mt-4 text-lg font-medium text-gray-900">No purchases yet</h3>
-            <p className="mt-2 text-sm text-gray-500">Your purchase history will appear here.</p>
+        )}
+        
+        {orders.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-md p-8 text-center">
+            <FiPackage className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">No purchases yet</h2>
+            <p className="text-gray-500 mb-6">You haven't made any purchases yet. Start shopping to see your orders here.</p>
+            <Link to="/" className="inline-block bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition">
+              Browse Products
+            </Link>
           </div>
         ) : (
-          <ul className="space-y-4">
-            {purchases.map(purchase => (
-              <li key={purchase.id} className="p-4 bg-white border border-green-100 rounded-lg shadow-sm hover:shadow-md transition duration-300">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center">
-                  <img
-                    src={purchase.image}
-                    alt={purchase.title}
-                    className="w-full sm:w-24 h-24 object-cover rounded-lg mb-4 sm:mb-0 sm:mr-4"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = 'https://via.placeholder.com/100?text=No+Image';
-                    }}
-                  />
-                  <div className="flex-grow">
-                    <h3 className="font-semibold text-lg">{purchase.title}</h3>
-                    <p className="text-green-600 font-bold">{formatPrice(purchase.price)}</p>
-                    <p className="text-gray-500 text-sm">Purchased on {new Date(purchase.date).toLocaleDateString()}</p>
-                    <div className="flex items-center mt-1">
-                      <RiRecycleFill className="text-green-600 mr-1 h-4 w-4" />
-                      <p className="text-xs text-green-600">{purchase.impact || 'Eco-friendly purchase'}</p>
+          <div className="space-y-6">
+            {orders.map((order) => (
+              <div 
+                key={order.id} 
+                className={`bg-white rounded-lg shadow-md overflow-hidden ${
+                  highlightedOrderId === order.id ? 'ring-2 ring-green-500' : ''
+                }`}
+              >
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center">
+                    <div>
+                      <h2 className="text-lg font-medium text-gray-900 flex items-center">
+                        Order #{order.id}
+                        {highlightedOrderId === order.id && (
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <FiCheckCircle className="mr-1" /> Just placed
+                          </span>
+                        )}
+                      </h2>
+                      <p className="mt-1 max-w-2xl text-sm text-gray-500 flex items-center">
+                        <FiCalendar className="mr-1" /> {formatDate(order.created_at)}
+                      </p>
+                    </div>
+                    <div className="mt-4 sm:mt-0">
+                      <p className="text-sm font-medium text-gray-500">Total</p>
+                      <p className="text-xl font-bold text-green-600">${order.total_amount?.toFixed(2)}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleBuyAgain(purchase.id)}
-                    className="px-4 py-2 mt-4 sm:mt-0 bg-green-50 text-green-700 rounded-lg border border-green-200 hover:bg-green-100 transition duration-300 flex items-center"
-                  >
-                    <FiPackage className="mr-1" />
-                    Buy Again
-                  </button>
                 </div>
-              </li>
+                
+                <div className="px-6 py-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3">Items</h3>
+                  <ul className="divide-y divide-gray-200">
+                    {order.items?.map((item) => (
+                      <li key={item.id} className="py-4 flex">
+                        <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
+                          <img 
+                            src={item.product?.image_url || 'https://via.placeholder.com/100?text=No+Image'} 
+                            alt={item.product?.title || 'Product'} 
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'https://via.placeholder.com/100?text=No+Image';
+                            }}
+                          />
+                        </div>
+                        
+                        <div className="ml-4 flex-1 flex flex-col">
+                          <div>
+                            <div className="flex justify-between text-base font-medium text-gray-900">
+                              <h4>{item.product?.title || 'Product no longer available'}</h4>
+                              <p className="ml-4">${item.price?.toFixed(2)}</p>
+                            </div>
+                            {item.product && (
+                              <p className="mt-1 text-sm text-gray-500">
+                                {item.product.category} • {item.product.condition}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                    
+                    {!order.items?.length && (
+                      <li className="py-4 text-center text-gray-500 italic">
+                        Order details are not available
+                      </li>
+                    )}
+                  </ul>
+                </div>
+                
+                <div className="px-6 py-4 bg-gray-50">
+                  <h3 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
+                    <FiInfo className="mr-1" /> Shipping Information
+                  </h3>
+                  <p className="text-sm text-gray-600 whitespace-pre-line">
+                    {order.shipping_address || 'No shipping address provided'}
+                  </p>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>

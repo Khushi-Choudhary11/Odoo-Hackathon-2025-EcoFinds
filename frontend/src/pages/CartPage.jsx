@@ -1,387 +1,276 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiTrash2, FiShoppingBag, FiAlertCircle, FiPlus, FiMinus } from 'react-icons/fi';
-import { RiLeafLine, RiRecycleLine } from 'react-icons/ri';
+import { FiShoppingCart, FiTrash2, FiArrowRight, FiAlertCircle } from 'react-icons/fi';
 import Sidebar from '../components/Sidebar';
+import { getAuthHeader, isAuthenticated, removeToken } from '../utils/auth';
 
 const CartPage = () => {
   const navigate = useNavigate();
   const [cartItems, setCartItems] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [unavailableItems, setUnavailableItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [removingItem, setRemovingItem] = useState(null);
 
-  // Add a safety check function
-  const safeCartItems = () => {
-    return Array.isArray(cartItems) ? cartItems : [];
-  };
-
-  // Eco impact calculations
-  const calculateEcoImpact = () => {
-    // Check if cartItems is an array and not empty
-    if (!Array.isArray(cartItems)) {
-      return {
-        waterSaved: 0,
-        wasteSaved: 0,
-        carbonReduced: 0
-      };
-    }
-
-    return {
-      waterSaved: Math.round(cartItems.length * 500), // liters
-      wasteSaved: Math.round(cartItems.reduce((total, item) => 
-        total + (item?.quantity || 0) * 0.5, 0
-      )), // kg
-      carbonReduced: Math.round(cartItems.reduce((total, item) => 
-        total + (item?.quantity || 0) * 2.3, 0
-      )) // kg CO2e
-    };
-  };
-
+  // Check authentication
   useEffect(() => {
-    const fetchCartItems = async () => {
-      setIsLoading(true);
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login', { state: { from: '/cart', message: 'Please log in to view your cart' } });
+    }
+  }, [navigate]);
+
+  // Fetch cart items
+  useEffect(() => {
+    const fetchCart = async () => {
+      // Check if authenticated
+      if (!isAuthenticated()) {
+        navigate('/login', { state: { from: '/cart', message: 'Please log in to view your cart' } });
+        return;
+      }
+      
+      setLoading(true);
       try {
-        const token = localStorage.getItem('token');
-        
-        if (!token) {
-          // Save fallback items for demo
-          const fallbackItems = [
-            { 
-              id: 1, 
-              title: 'Upcycled Denim Jacket', 
-              price: 15, 
-              quantity: 1,
-              image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=300',
-              eco: 'Saves 2000L of water compared to new denim' 
-            },
-            { 
-              id: 2, 
-              title: 'Vintage Lamp', 
-              price: 20, 
-              quantity: 1,
-              image: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=300',
-              eco: 'Reduces electronic waste by reusing' 
-            },
-            { 
-              id: 3, 
-              title: 'Bamboo Toothbrushes (Set of 4)', 
-              price: 8, 
-              quantity: 1,
-              image: 'https://images.unsplash.com/photo-1632811744797-3cf99c9c1775?q=80&w=300',
-              eco: 'Biodegradable alternative to plastic' 
-            }
-          ];
-          setCartItems(fallbackItems);
-          return;
-        }
+        console.log("Fetching cart items...");
         
         const response = await fetch('http://localhost:5000/api/cart', {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+          headers: getAuthHeader()
         });
         
+        console.log("Cart response status:", response.status);
+        
+        // Try to parse JSON even if response is not OK
+        const data = await response.json().catch(e => {
+          console.error("Failed to parse JSON response:", e);
+          return {};
+        });
+        
+        console.log("Cart API response:", data);
+        
         if (!response.ok) {
-          throw new Error('Failed to fetch cart items');
+          if (response.status === 401 || response.status === 422 || data.msg === 'Subject must be a string') {
+            // Authentication error
+            console.error("Authentication error. Redirecting to login");
+            removeToken(); // Clear invalid token
+            navigate('/login', { state: { from: '/cart', message: 'Your session has expired. Please log in again.' } });
+            return;
+          }
+          throw new Error(data.message || data.msg || `Failed to fetch cart items (${response.status})`);
         }
         
-        const data = await response.json();
-        setCartItems(data);
+        // Debug cart items received
+        if (Array.isArray(data.cartItems)) {
+          console.log(`Received ${data.cartItems.length} cart items`);
+        } else {
+          console.log("cartItems is not an array:", data.cartItems);
+        }
+        
+        setCartItems(Array.isArray(data.cartItems) ? data.cartItems : []);
+        setUnavailableItems(Array.isArray(data.unavailableItems) ? data.unavailableItems : []);
+        setTotal(typeof data.total === 'number' ? data.total : 0);
       } catch (err) {
         console.error('Error fetching cart:', err);
-        setError(err.message);
-        // Use fallback data in case API fails
-        const fallbackItems = [
-          { 
-            id: 1, 
-            title: 'Upcycled Denim Jacket', 
-            price: 15, 
-            quantity: 1,
-            image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=300',
-            eco: 'Saves 2000L of water compared to new denim' 
-          },
-          { 
-            id: 2, 
-            title: 'Vintage Lamp', 
-            price: 20, 
-            quantity: 1,
-            image: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=300',
-            eco: 'Reduces electronic waste by reusing' 
-          },
-          { 
-            id: 3, 
-            title: 'Bamboo Toothbrushes (Set of 4)', 
-            price: 8, 
-            quantity: 1,
-            image: 'https://images.unsplash.com/photo-1632811744797-3cf99c9c1775?q=80&w=300',
-            eco: 'Biodegradable alternative to plastic' 
-          }
-        ];
-        setCartItems(fallbackItems);
+        setError(err.message || 'Failed to load cart items');
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
-
-    fetchCartItems();
-  }, []);
+    
+    fetchCart();
+  }, [navigate]);
 
   const handleRemoveItem = async (itemId) => {
-    setIsRemoving(itemId);
+    const token = localStorage.getItem('token');
+    if (!token) return;
     
+    setRemovingItem(itemId);
     try {
-      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/cart/${itemId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include'
+      });
       
-      if (token) {
-        const response = await fetch(`http://localhost:5000/api/cart/${itemId}`, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to remove item from cart');
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to remove item');
       }
       
-      // Update local state regardless of API call (for demo purposes)
-      setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
-    } catch (err) {
-      console.error('Error removing item from cart:', err);
-      setError('Failed to remove item. Please try again.');
-      // Still update local state for demo purposes
-      setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
-    } finally {
-      setIsRemoving(false);
-    }
-  };
-
-  const handleUpdateQuantity = async (itemId, newQuantity) => {
-    if (newQuantity < 1) return;
-    
-    setIsUpdating(itemId);
-    
-    try {
-      const token = localStorage.getItem('token');
+      // Update cart items locally
+      setCartItems(cartItems.filter(item => item.id !== itemId));
       
-      if (token) {
-        const response = await fetch(`http://localhost:5000/api/cart/${itemId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ quantity: newQuantity })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to update quantity');
-        }
-      }
+      // Recalculate total
+      const updatedTotal = cartItems
+        .filter(item => item.id !== itemId)
+        .reduce((sum, item) => sum + (item.product?.price || 0), 0);
+      setTotal(updatedTotal);
       
-      // Update local state regardless of API call (for demo purposes)
-      setCartItems(prevItems => 
-        prevItems.map(item => 
-          item.id === itemId ? { ...item, quantity: newQuantity } : item
-        )
-      );
     } catch (err) {
-      console.error('Error updating quantity:', err);
-      setError('Failed to update quantity. Please try again.');
+      console.error('Error removing item:', err);
+      setError(err.message || 'Failed to remove item');
     } finally {
-      setIsUpdating(false);
+      setRemovingItem(null);
     }
-  };
-
-  const calculateSubtotal = () => {
-    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
-
-  const formatPrice = (price) => {
-    return `$${price.toFixed(2)}`;
   };
 
   const handleCheckout = () => {
+    if (cartItems.length === 0) {
+      setError('Your cart is empty');
+      return;
+    }
+    
     navigate('/checkout');
   };
-
-  const ecoImpact = calculateEcoImpact();
 
   return (
     <div className="flex">
       <Sidebar />
       <div className="ml-64 p-8 w-full">
-        <h2 className="text-2xl font-bold text-green-700 mb-4">Your Eco-Friendly Cart</h2>
+        <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+          <FiShoppingCart className="mr-3" /> Your Cart
+        </h1>
         
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center">
-            <FiAlertCircle className="text-red-500 mr-2" />
-            <p className="text-red-700">{error}</p>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <FiAlertCircle className="h-5 w-5 text-red-500" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
           </div>
         )}
         
-        <div className="bg-green-50 p-4 rounded-lg mb-6 border border-green-200">
-          <div className="flex items-center">
-            <RiLeafLine className="text-green-600 text-xl mr-2" />
-            <p className="text-green-800">
-              <span className="font-bold">Your Impact:</span> By purchasing pre-loved and eco-friendly products, 
-              you're helping reduce waste and supporting sustainable practices.
-            </p>
-          </div>
-        </div>
-        
-        {isLoading ? (
+        {loading ? (
           <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-green-600"></div>
+            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-600"></div>
           </div>
-        ) : safeCartItems().length === 0 ? (
-          <div className="text-center py-16">
-            <FiShoppingBag className="mx-auto h-12 w-12 text-gray-300" />
-            <h3 className="mt-2 text-lg font-medium text-gray-900">Your cart is empty</h3>
-            <p className="mt-1 text-sm text-gray-500">Start shopping for eco-friendly products!</p>
-            <div className="mt-6">
-              <Link 
-                to="/" 
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
-              >
-                Continue Shopping
-              </Link>
-            </div>
+        ) : cartItems.length === 0 ? (
+          <div className="bg-white rounded-lg p-8 text-center shadow-md">
+            <FiShoppingCart className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">Your cart is empty</h2>
+            <p className="text-gray-500 mb-6">Looks like you haven't added any items to your cart yet.</p>
+            <Link to="/" className="inline-block bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition">
+              Start Shopping
+            </Link>
           </div>
         ) : (
-          <div>
-            <div className="space-y-4 mb-8">
-              {safeCartItems().map(item => (
-                <div key={item.id} className="p-4 border border-green-100 rounded-lg bg-white shadow-sm hover:shadow-md transition duration-300">
-                  <div className="flex flex-col sm:flex-row sm:items-center">
-                    <img 
-                      src={item.image} 
-                      alt={item.title} 
-                      className="w-full sm:w-24 h-24 object-cover rounded-lg mb-4 sm:mb-0 sm:mr-4"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = 'https://via.placeholder.com/100?text=No+Image';
-                      }}
-                    />
-                    <div className="flex-grow">
-                      <h3 className="text-lg font-semibold text-gray-800">{item.title}</h3>
-                      <p className="text-green-700 font-bold">{formatPrice(item.price)}</p>
-                      {item.eco && <p className="text-xs text-green-600 mt-1">{item.eco}</p>}
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row items-center mt-4 sm:mt-0">
-                      <div className="flex border border-gray-300 rounded-md mb-3 sm:mb-0 sm:mr-4">
-                        <button 
-                          onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)} 
-                          disabled={item.quantity <= 1 || isUpdating === item.id}
-                          className="px-2 py-1 border-r border-gray-300 hover:bg-gray-100 disabled:opacity-50"
-                          aria-label="Decrease quantity"
-                        >
-                          <FiMinus className="w-4 h-4" />
-                        </button>
-                        <span className="px-4 py-1 flex items-center justify-center min-w-[40px]">
-                          {isUpdating === item.id ? (
-                            <div className="w-4 h-4 border-t-2 border-b-2 border-green-600 rounded-full animate-spin"></div>
-                          ) : (
-                            item.quantity
-                          )}
-                        </span>
-                        <button 
-                          onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
-                          disabled={isUpdating === item.id}
-                          className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50"
-                          aria-label="Increase quantity"
-                        >
-                          <FiPlus className="w-4 h-4" />
-                        </button>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Cart Items - Left Column */}
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <ul className="divide-y divide-gray-200">
+                  {cartItems.map(item => (
+                    <li key={item.id} className="p-6 flex flex-col sm:flex-row items-center">
+                      <div className="sm:w-20 sm:h-20 h-32 w-32 flex-shrink-0 mb-4 sm:mb-0">
+                        <img 
+                          className="w-full h-full object-cover rounded" 
+                          src={item.product?.image_url || 'https://via.placeholder.com/100?text=No+Image'} 
+                          alt={item.product?.title || 'Product'}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = 'https://via.placeholder.com/100?text=No+Image';
+                          }}
+                        />
                       </div>
                       
-                      <button 
-                        onClick={() => handleRemoveItem(item.id)} 
-                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-300 flex items-center"
-                        disabled={isRemoving === item.id}
-                      >
-                        {isRemoving === item.id ? (
-                          <div className="w-4 h-4 border-t-2 border-b-2 border-white rounded-full animate-spin mr-1"></div>
-                        ) : (
-                          <FiTrash2 className="mr-1" />
-                        )}
-                        Remove
-                      </button>
+                      <div className="ml-0 sm:ml-6 flex-1 flex flex-col sm:flex-row sm:items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-medium text-gray-800">
+                            {item.product?.title || 'Unknown Product'}
+                          </h3>
+                          <p className="text-sm text-gray-500 mb-2">
+                            {item.product?.condition || 'N/A'} • {item.product?.category || 'Unknown Category'}
+                          </p>
+                          <p className="font-semibold text-green-600">
+                            ${item.product?.price?.toFixed(2) || '0.00'}
+                          </p>
+                        </div>
+                        
+                        <button 
+                          onClick={() => handleRemoveItem(item.id)}
+                          disabled={removingItem === item.id}
+                          className="mt-4 sm:mt-0 inline-flex items-center px-3 py-2 border border-red-300 text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none"
+                        >
+                          {removingItem === item.id ? (
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-red-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <FiTrash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Remove
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              {unavailableItems.length > 0 && (
+                <div className="mt-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <FiAlertCircle className="h-5 w-5 text-yellow-400" />
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">
+                        Some items in your cart are no longer available
+                      </h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <ul className="list-disc pl-5 space-y-1">
+                          {unavailableItems.map(item => (
+                            <li key={item.id}>
+                              The item {item.product_id ? `#${item.product_id}` : ''} is {item.reason === 'sold' ? 'already sold' : 'no longer available'}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Environmental Impact Card */}
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <h3 className="font-bold text-green-800 mb-3 flex items-center">
-                  <RiRecycleLine className="mr-2" />
-                  Your Environmental Impact
-                </h3>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-white p-3 rounded-md">
-                    <p className="text-lg font-bold text-green-700">{ecoImpact.waterSaved}L</p>
-                    <p className="text-xs text-gray-600">Water Saved</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-md">
-                    <p className="text-lg font-bold text-green-700">{ecoImpact.wasteSaved}kg</p>
-                    <p className="text-xs text-gray-600">Waste Reduced</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-md">
-                    <p className="text-lg font-bold text-green-700">{ecoImpact.carbonReduced}kg</p>
-                    <p className="text-xs text-gray-600">CO2 Reduced</p>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Order Summary Card */}
-              <div className="p-4 bg-white rounded-lg border border-gray-200">
-                <h3 className="font-bold text-gray-800 mb-4">Order Summary</h3>
+            {/* Order Summary - Right Column */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-lg font-medium text-gray-900 mb-4">Order Summary</h2>
                 
-                <div className="space-y-2 mb-4">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span>{formatPrice(calculateSubtotal())}</span>
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="flex justify-between mb-2">
+                    <p className="text-sm text-gray-600">Subtotal</p>
+                    <p className="text-sm font-medium text-gray-900">${total.toFixed(2)}</p>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Shipping</span>
-                    <span>{formatPrice(5.99)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Tax</span>
-                    <span>{formatPrice(calculateSubtotal() * 0.08)}</span>
+                  <div className="flex justify-between mb-2">
+                    <p className="text-sm text-gray-600">Shipping</p>
+                    <p className="text-sm font-medium text-gray-900">FREE</p>
                   </div>
                 </div>
                 
-                <div className="border-t border-gray-200 pt-4 mb-6">
+                <div className="border-t border-gray-200 pt-4 mt-4">
                   <div className="flex justify-between">
-                    <span className="text-lg font-bold">Total</span>
-                    <span className="text-lg font-bold text-green-700">
-                      {formatPrice(calculateSubtotal() + 5.99 + (calculateSubtotal() * 0.08))}
-                    </span>
+                    <p className="text-base font-medium text-gray-900">Total</p>
+                    <p className="text-base font-bold text-green-700">${total.toFixed(2)}</p>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">Including all applicable taxes</p>
                 </div>
                 
                 <button 
                   onClick={handleCheckout}
-                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-300 font-bold flex items-center justify-center"
+                  disabled={cartItems.length === 0}
+                  className={`mt-6 w-full flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white 
+                    ${cartItems.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                 >
-                  <FiShoppingBag className="mr-2" />
-                  Proceed to Checkout
+                  Checkout <FiArrowRight className="ml-2" />
                 </button>
               </div>
-            </div>
-            
-            <div className="text-center">
-              <Link to="/" className="text-green-600 hover:underline">
-                Continue Shopping
-              </Link>
             </div>
           </div>
         )}

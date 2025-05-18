@@ -4,7 +4,7 @@ import './styles/globals.css';
 
 // Pages
 import HomePageFixed from './pages/HomePageFixed';
-import ProductDetailPage from './pages/ProductDetailPage';
+import ProductDetailPageFixed from './pages/ProductDetailPageFixed';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import PurchaseHistoryPage from './pages/PurchaseHistoryPage';
@@ -21,7 +21,7 @@ function App() {
       <div className="App">
         <Routes>
           <Route path="/" element={<HomePageFixed />} />
-          <Route path="/product/:id" element={<ProductDetailPage />} />
+          <Route path="/product/:id" element={<ProductDetailPageFixed />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/purchases" element={<PurchaseHistoryPage />} />
