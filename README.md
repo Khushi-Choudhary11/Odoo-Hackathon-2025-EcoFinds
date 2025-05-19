@@ -1,4 +1,4 @@
-[Link for the demo video](https://drive.google.com/drive/folders/11MDgqPUCBOPMf827NDmQ22Oy1wyy4OWG?usp=sharing)
+
 # 🌱 EcoFinds - Sustainable Second-Hand Marketplace
 
 
@@ -205,6 +205,8 @@ The frontend will be accessible at http://localhost:3000
 - 🔲 Social media sharing
 - 🔲 Admin dashboard for platform management
 
+#### Demo video
+[Link for the demo video](https://drive.google.com/drive/folders/11MDgqPUCBOPMf827NDmQ22Oy1wyy4OWG?usp=sharing)
 
 ## 👥 Team
 
