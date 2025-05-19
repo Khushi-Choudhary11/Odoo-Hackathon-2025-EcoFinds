@@ -206,14 +206,7 @@ The frontend will be accessible at http://localhost:3000
 - 🔲 Social media sharing
 - 🔲 Admin dashboard for platform management
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 👥 Team
 
-- Developer Team - Odoo Hackathon 2025
+- Team 333 - Odoo Hackathon 2025
