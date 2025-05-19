@@ -57,7 +57,7 @@ EcoFinds is a sustainable second-hand marketplace platform that enables users to
 
 ## 📂 Project Structure
 
-
+```
 ecofinds/
 ├── backend/              # Flask backend
 │   ├── models/           # Database models
@@ -72,7 +72,7 @@ ecofinds/
         ├── pages/        # Page components
         ├── utils/        # Utility functions
         └── App.js        # Main component
-
+```
 
 ## 🚀 Getting Started
 
